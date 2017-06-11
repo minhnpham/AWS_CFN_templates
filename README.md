@@ -1,2 +1,2 @@
-# wordpress_cft
-AWS Cloudformation template to provision a fully functional Wordpress environment using nested templates
+# AWS CloudFormation template for a WordPress site
+AWS CloudFormation nested templates to provision a fully functional WordPress environment into dual AZ, with RDS
