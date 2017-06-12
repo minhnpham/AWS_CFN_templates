@@ -1,4 +1,5 @@
 {
+  "Description" : "Creates 1 VPC, 1 InternetGateway, 2 Public Subnets, 2 Private Subnets, 2 Nat Gateways, all associated routetables",
   "Parameters": {
     "CIDRRange": {
       "Description": "VPCCIDR Range (will be a /16 block)",
