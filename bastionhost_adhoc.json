@@ -1,6 +1,6 @@
 {
   "AWSTemplateFormatVersion" : "2010-09-09",
-  "Description" : "Launch a BastionHost On Demand into a public subnet",
+  "Description" : "Launch a Bastion host(s) On Demand into a public subnet. After a TTL period the hosts will terminate themselves and all stack config will auto clean itself.",
 
   "Metadata" : {
     "AWS::CloudFormation::Interface" : {
@@ -73,11 +73,11 @@
         "Description"                   : "Instance name (for tagging)."
     },
     "BastionTTL" : {
-      "Description" : "Time To Live in minutes after which the Bastion hosts will be auto deleted.",
-      "Type": "Number",
-      "MinValue": "5",
-      "MaxValue": "4320",
-      "Default": "60"
+        "Description" : "Time To Live in minutes after which the Bastion hosts will be auto deleted.",
+        "Type": "Number",
+        "MinValue": "5",
+        "MaxValue": "4320",
+        "Default": "60"
     }    
   },
 
@@ -277,13 +277,18 @@
                 {
                   "Effect": "Allow",
                   "Action": [ "iam:DeleteInstanceProfile", "iam:RemoveRoleFromInstanceProfile" ],
-                  "Resource": { "Fn::Join" : ["", ["arn:aws:iam::", { "Ref" : "AWS::AccountId" }, ":instance-profile/", { "Ref" : "AWS::StackName" }, "-", "WebServerIAMInstanceProfile", "-*" ]] }
+                  "Resource": { "Fn::Join" : ["", ["arn:aws:iam::", { "Ref" : "AWS::AccountId" }, ":instance-profile/", { "Ref" : "AWS::StackName" }, "-", "BastionIAMInstanceProfile", "-*" ]] }
                 },
                 {
                   "Effect": "Allow",
                   "Action": [ "iam:DeleteRole", "iam:DeleteRolePolicy" ],
                   "Resource": { "Fn::Join" : ["", ["arn:aws:iam::", { "Ref" : "AWS::AccountId" }, ":role/", { "Ref" : "AWS::StackName" }, "-", "StackDeletorRole", "-*" ]] }
-                }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [ "autoscaling:*"],
+                  "Resource": "*"
+                }                                
               ]
             }
           }
