@@ -7,7 +7,7 @@
     "ParameterGroups" : [
       {
         "Label"                         : { "default" : "Bastion Config" },
-        "Parameters"                    : [ "BastionCount", "InstanceType", "UserKeys", "BastionName" ]
+        "Parameters"                    : [ "BastionCount", "InstanceType", "UserKeys", "BastionName", "BastionTTL" ]
       },
       {
         "Label"                         : { "default" : "Network Config" },
@@ -19,6 +19,7 @@
         "InstanceType"                  : { "default" : "Instance size" },
         "UserKeys"                      : { "default" : "Bastion PEM keys" },
         "BastionName"                   : { "default" : "Bastion name" },
+        "BastionTTL"                   : { "default"  : "Bastion TTL" },
         "VPCId"                         : { "default" : "VPC Id" },
         "AvailZone"                     : { "default" : "Availability zone" },
         "PublicSubnet"                  : { "default" : "Public subnet" },
@@ -60,7 +61,7 @@
     },
     "PermitCIDR" : {
         "Type"                          : "String",
-        "Default"                       : "10.79.10.0/24",
+        "Default"                       : "0.0.0.0/0",
         "Description"                   : "Enter the CIDR or IP address to permit SSH from. (Note: Used to create a bastion security group.)",
         "AllowedPattern"                : "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
         "ConstraintDescription"         : "Please enter a valid IP CIDR range of the form x.x.x.x/x."
@@ -70,7 +71,14 @@
         "Default"                       : "bastion-srv-az1",
         "AllowedPattern"                : "[-a-zA-Z0-9]*",
         "Description"                   : "Instance name (for tagging)."
-    }
+    },
+    "BastionTTL" : {
+      "Description" : "Time To Live in minutes after which the Bastion hosts will be auto deleted.",
+      "Type": "Number",
+      "MinValue": "5",
+      "MaxValue": "4320",
+      "Default": "60"
+    }    
   },
 
   "Mappings" : {
@@ -97,20 +105,6 @@
         "Comment" : "Setup iptables and disable unwanted services",
           "AWS::CloudFormation::Init" : {
             "config" : {
-              "commands" : {
-                "iptables.sh" : {
-                  "command" : {
-                    "Fn::Join" : [ "",
-                    [ "/sbin/iptables -F\n", 
-                      "/sbin/iptables -P INPUT DROP\n",
-                      "/sbin/iptables -P FORWARD DROP\n",
-                      "/sbin/iptables -P OUTPUT ACCEPT\n",
-                      "/sbin/iptables -A INPUT -p tcp --dport 22 -s ", { "Ref" : "PermitCIDR" }, " -j ACCEPT\n",
-                      "/sbin/iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n",
-                      "/sbin/iptables -A INPUT -i lo -j ACCEPT\n",
-                      "/sbin/service iptables save\n" ]
-                    ]
-              } } },
               "files" : {
                 "/etc/cfn/cfn-hup.conf" : {
                   "content" : { "Fn::Join" : [ "", [
@@ -136,8 +130,33 @@
                   "mode"    : "000400",
                   "owner"   : "root",
                   "group"   : "root"
+                },
+                "/usr/local/bin/deletestack.sh" : {
+                  "content" : { "Fn::Join" : ["", [ "aws cloudformation delete-stack --region ", { "Ref" : "AWS::Region" }, " --stack-name ", { "Ref" : "AWS::StackId" } ]]},
+                  "mode"    : "000400",
+                  "owner"   : "root",
+                  "group"   : "root"
                 }
               },
+              "commands" : {
+                "iptables.sh" : {
+                  "command" : {
+                    "Fn::Join" : [ "",
+                    [ "/sbin/iptables -F\n", 
+                      "/sbin/iptables -P INPUT DROP\n",
+                      "/sbin/iptables -P FORWARD DROP\n",
+                      "/sbin/iptables -P OUTPUT ACCEPT\n",
+                      "/sbin/iptables -A INPUT -p tcp --dport 22 -s ", { "Ref" : "PermitCIDR" }, " -j ACCEPT\n",
+                      "/sbin/iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n",
+                      "/sbin/iptables -A INPUT -i lo -j ACCEPT\n",
+                      "/sbin/service iptables save\n" ]
+                    ]
+                  } 
+                },
+                "schedule_stack_deletion" : {
+                  "command" : { "Fn::Join" : ["", [ "at -f /usr/local/bin/deletestack.sh now + ", { "Ref" : "BastionTTL" }, " minutes" ]]}
+                } 
+              },              
               "services" : {
                 "sysvinit" : {
                   "sendmail" : {
@@ -160,6 +179,7 @@
         "ImageId"                       : { "Fn::FindInMap" : [ "RegionLinuxAMI", { "Ref" : "AWS::Region" }, "AMI" ] },
         "KeyName"                       : { "Ref" : "UserKeys" },
         "InstanceType"                  : { "Ref" : "InstanceType" },
+        "IamInstanceProfile"            : { "Ref" : "BastionIAMInstanceProfile" },
         "InstanceMonitoring"            : "false",
         "AssociatePublicIpAddress"      : "true",
         "SecurityGroups"                : [ { "Ref" : "ec2BastionSecurityGroup" } ],
@@ -215,6 +235,68 @@
           }
         ]
       }
+    },
+
+    "StackDeletorRole": {
+      "Type": "AWS::IAM::Role",
+      "Metadata" : { "Comment" : "This role requires permissions to delete each of the stack resources. All other stack resources depend directly or indirectly on this role via DependsOn, Ref, or Fn::GetAtt, to ensure that the role is the last of the stack resources to be deleted." },
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version" : "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {
+              "Service": [ "ec2.amazonaws.com" ]
+            },
+            "Action": [ "sts:AssumeRole" ]
+          }]
+        },
+        "Path": "/",
+        "Policies" : [
+          {
+            "PolicyName": "AllowStackDeletionPolicy",
+            "PolicyDocument": {
+              "Version" : "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [ "cloudformation:DeleteStack" ],
+                  "Resource": { "Ref" : "AWS::StackId" }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [ "ec2:DescribeInstances" ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [ "ec2:TerminateInstances", "ec2:DeleteSecurityGroup" ],
+                  "Resource": "*",
+                  "Condition": { "StringEquals": { "ec2:ResourceTag/aws:cloudformation:stack-id": { "Ref" : "AWS::StackId" } } }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [ "iam:DeleteInstanceProfile", "iam:RemoveRoleFromInstanceProfile" ],
+                  "Resource": { "Fn::Join" : ["", ["arn:aws:iam::", { "Ref" : "AWS::AccountId" }, ":instance-profile/", { "Ref" : "AWS::StackName" }, "-", "WebServerIAMInstanceProfile", "-*" ]] }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [ "iam:DeleteRole", "iam:DeleteRolePolicy" ],
+                  "Resource": { "Fn::Join" : ["", ["arn:aws:iam::", { "Ref" : "AWS::AccountId" }, ":role/", { "Ref" : "AWS::StackName" }, "-", "StackDeletorRole", "-*" ]] }
+                }
+              ]
+            }
+          }
+        ]
+      }    
+    },
+
+    "BastionIAMInstanceProfile": {
+       "Type": "AWS::IAM::InstanceProfile",
+       "Properties": {
+          "Path": "/",
+          "Roles": [ { "Ref": "StackDeletorRole" } ]
+       }
     }
   }
 }
