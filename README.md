@@ -8,6 +8,7 @@ My Personal AWS CloudFormation Template samples for when I need to quickly confi
 + 2 Private Subnets
 + 2 NAT Gateways
 + RouteTables from PrivateSubnet(s) to PublicSubnets(s)
++ [Network Diagram](draw.io/vpc-2az-2pubnet-2privnet-2ngate.png)
 
 ### bastionhost_adhoc.json
 + Launches an adhoc Linux AMI Bastion hosts into a Public subnet of a VPC
