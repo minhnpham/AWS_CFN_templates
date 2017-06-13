@@ -15,3 +15,6 @@ My Personal AWS CloudFormation Template samples for when I need to quickly confi
 + Only SSH access is allowed
 + Bastion hosts have a runtime configurable Time To Live duration, after which they will be auto killed.  *Note:* Maximum TTL of 3 days is allowed.
 + Bastion hosts launched via AutoScaling group so as many can be launched as required
+
+### s3_bucket.json
++ Simple template to create an S3 bucket, for those moments when I forget how to do it!
